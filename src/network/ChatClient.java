@@ -9,10 +9,12 @@ import java.util.Scanner;
 public class ChatClient {
 
 	private static Socket socket;
-	private static Socket coordinatorSocket = null;
 	
 	private static Scanner in;
-	private static PrintWriter out;
+	private static Scanner serverIn;
+	private static PrintWriter serverOut;
+		
+	private static String name;
 	
 	public static void main(String[] args) throws IOException {
 		in = new Scanner(System.in);
@@ -31,21 +33,69 @@ public class ChatClient {
 			}
 		}
 		
+		// establish connection and start Printer
 		try {
 			socket = new Socket(address, port);
-			out = new PrintWriter(socket.getOutputStream(), true);
-			out.println("This is a test!\nI want to see if the newline char works.");
-		} catch (NumberFormatException | UnknownHostException | IOException e) {
+			serverIn = new Scanner(socket.getInputStream());
+			serverOut = new PrintWriter(socket.getOutputStream(), true);
+			
+			// register name
+			while (true) {
+				System.out.println("Please enter in your name: ");
+				name = in.nextLine();
+				serverOut.println(name);
+				
+				while (!serverIn.hasNextLine())
+				{
+					Thread.sleep(5);
+				}
+				String response = serverIn.nextLine();
+				if (response.equals("NAME_ACCEPTED")) {
+					break;
+				}
+				else {
+					System.out.println("Name taken!");
+				}
+			}
+			
+			Thread printerThread = new Thread(new Printer());
+			printerThread.start();
+			
+		} catch (NumberFormatException | IOException | InterruptedException e) {
 			e.printStackTrace();
-		} finally {
-			if (socket != null && !socket.isClosed()) {
-				socket.close();
-			}
-			if (in != null) {
-				in.close();
-			}
-			if (out != null) {
-				out.close();
+			return;			
+		}
+		
+		while (socket.isConnected()) {
+			serverOut.println(in.nextLine());
+		}
+		
+		if (socket != null && !socket.isClosed()) {
+			socket.close();
+		}
+		if (in != null) {
+			in.close();
+		}
+		if (serverOut != null) {
+			serverOut.close();
+		}
+		if (serverIn != null) {
+			serverIn.close();
+		}
+	}
+	
+	private static class Printer implements Runnable {
+		
+		@Override
+		public void run() {			
+			while (true) {
+				while (serverIn.hasNextLine()) {
+					String message = serverIn.nextLine();
+					if (message.equals("QUIT_SUCCESS")) {
+						return;
+					}
+					System.out.println(message);
+				}
 			}
 		}
 	}
