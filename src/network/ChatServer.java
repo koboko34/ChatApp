@@ -6,12 +6,14 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class ChatServer {
@@ -26,7 +28,7 @@ public class ChatServer {
 		// checks for valid port between 0 and 65535
 		int port = -1;
 		while (port == -1) {
-			System.out.println("Enter in a port:");
+			System.out.println("Enter in a port for the server to listen on:");
 			String portString = in.nextLine();
 			try {
 				port = Integer.parseInt(portString);
@@ -42,7 +44,7 @@ public class ChatServer {
 		}
 		
 		// create thread pool which Worker instances will use to handle communication between server and users
-		ExecutorService pool = Executors.newFixedThreadPool(500);
+		ExecutorService pool = Executors.newFixedThreadPool(500, new NamedThreadFactory("serverWorker"));
 		ServerSocket listener = null;
 		try {
 			listener = new ServerSocket(port);
@@ -67,6 +69,22 @@ public class ChatServer {
 		
 		// closing system input stream
 		in.close();
+	}
+	
+	// custom thread factory which allows each thread pool to give accurate names to their threads
+	private static class NamedThreadFactory implements ThreadFactory {
+		private String threadName;
+		private int i = 0;
+		
+		public NamedThreadFactory(String name) {
+			threadName = name;
+		}
+
+		@Override
+		public Thread newThread(Runnable r) {
+			Thread t = new Thread(r, threadName + "-" + i);
+			return t;
+		}
 	}
 	
 	// closes all sockets which established a connected with the server
@@ -116,11 +134,11 @@ public class ChatServer {
 				coordinatorSocket = null;
 			}
 			else {
-				int randomIndex = ThreadLocalRandom.current().nextInt(0, set.size() + 1);
+				int randomIndex = ThreadLocalRandom.current().nextInt(0, set.size());
 				int i = 0;
 				for (Socket user : set) {
 					if (i == randomIndex) {
-						coordinatorSocket = user;
+						setCoordinator(user);
 						return;
 					}
 					i++;
@@ -131,23 +149,44 @@ public class ChatServer {
 		// validates that all users in activeUsers are still connected
 		// in the event that the coordinator is found to be disconnected,
 		// a new coordinator is selected at random
-		private void validateUsers() {
+		private synchronized void validateUsers() {
 			boolean coordinatorChanged = false;
+			ArrayList<Socket> usersToRemove = new ArrayList<>();
 			
 			for (Socket user : activeUsers.keySet()) {
 				if (user.isClosed()) {
-					if (user.equals(coordinatorSocket)) {
-						coordinatorChanged = true;
-						assignRandomCoordinator();						
-					}
-					activeUsers.remove(user);
+					usersToRemove.add(user);
 				}
 			}
 			
+			for (Socket user : usersToRemove) {
+				if (user.equals(coordinatorSocket)) {
+					coordinatorChanged = true;
+					activeUsers.remove(user);
+					assignRandomCoordinator();						
+				}
+				else {
+					activeUsers.remove(user);					
+				}
+			}
+			
+			pushUsersToCoordinator();
 			if (coordinatorChanged && coordinatorSocket != null)
 			{
 				broadcast("Coordinator changed. The new coordinator is " + activeUsers.get(coordinatorSocket));
 			}
+		}
+		
+		private void pushUsersToCoordinator() {
+			if (coordinatorSocket == null) {
+				return;
+			}
+			
+			serverOut.println("NAMES_BEGIN");
+			for (String name : activeUsers.values()) {
+				serverOut.println(name);
+			}
+			serverOut.println("NAMES_END");
 		}
 		
 		// broadcast a message to all active users except self
@@ -205,7 +244,7 @@ public class ChatServer {
 		// prints a formatted string containing the number of active users
 		private void printMessageMode() {
 			if (messageMode == MessageMode.BROADCAST) {
-				serverOut.println("Switched to broadcast mode!");
+				serverOut.println("=== Switched to broadcast mode! ===");
 			}
 			else {
 				serverOut.println("=== Switched to private message mode! ===");
@@ -214,9 +253,33 @@ public class ChatServer {
 		}
 		
 		// prints a formatted string containing the details of all active users
+		// print format:
+		//   IP               |  Port   |  Name
+		//   127.127.127.127  |  65656  |  Name
+		//   87.126.10.2      |  6563   |  Name
+		//   17.17.1.107      |  5820   |  Name
+		// etc...
 		private void printUserDetailsMessage() {
-			String s = "";
-			//============================FINISH THIS LATER=============================
+			String s = "  IP               |  Port   |  Name";
+			serverOut.println(s);
+			
+			for (Map.Entry<Socket, String> entry : activeUsers.entrySet()) {
+				String ip = entry.getKey().getLocalAddress().getHostAddress();
+				String port = String.valueOf(entry.getKey().getLocalPort());
+				String name = entry.getValue();
+				
+				s = "  " + ip;
+				for (int i = ip.length(); i < 15; i++) {
+					s += " ";
+				}
+				s += "  |  " + port;
+				for (int i = port.length(); i < 5; i++) {
+					s += " ";
+				}
+				s += "  |  " + name;
+				
+				serverOut.println(s);
+			}
 		}
 		
 		// returns a formatted timestamp string used at the start of user messages
@@ -226,11 +289,94 @@ public class ChatServer {
 			return "[" + currentTime.format(formatter) + "] ";
 		}
 		
+		private void setCoordinator(Socket newCoordinator) {
+			coordinatorSocket = newCoordinator;
+			pushUsersToCoordinator();
+			PrintWriter out = null;
+			try {
+				out = new PrintWriter(newCoordinator.getOutputStream(), true);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			out.println("NEW_COORDINATOR");
+		}
+		
+		private void handlePings() {
+			PrintWriter out = null;
+			Scanner in = null;
+			
+			while (serverIn.hasNextLine()) {
+				String userName = serverIn.nextLine();
+				if (userName.equals("PING_END")) {
+					validateUsers();
+					return;
+				}
+				
+				Socket user = null;
+				for (Map.Entry<Socket, String> entry : activeUsers.entrySet()) {
+					if (entry.getValue().equals(userName)) {
+						user = entry.getKey();
+						break;
+					}
+				}
+				
+				if (user == null) {
+					continue;
+				}
+				
+				try {
+					out = new PrintWriter(user.getOutputStream(), true);
+					in = new Scanner(user.getInputStream());
+					out.println("PING");
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+				
+				try {
+					Thread.sleep(10);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+				
+				if (in.hasNextLine()) {
+					String s = in.nextLine();
+					if (s.equals("PING")) {
+						continue;
+					}
+				}
+				
+				try {
+					user.close();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		
+		/*
+		// ping the client to see if there is a response
+		// if there is no response, we assume the client has quit and close the socket
+		private boolean ping() {
+			serverOut.println("PING");
+			try {
+				Thread.sleep(10);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			if (!socket.isClosed() && serverIn.hasNextLine()) {
+				String s = serverIn.nextLine();
+				if (s.equals("PING")) {
+					return true;
+				}
+			}
+			return false;
+		}
+		*/
+		
 		@Override
 		public void run() {			
 			// validate that all users are still connected
 			validateUsers();
-			
 			
 			// check if socket is already in activeUsers
 			// if not, try add with name from stream
@@ -254,12 +400,23 @@ public class ChatServer {
 				}
 
 				// if successful, respond with NAME_ACCEPTED, add socket and name to activeUsers map
-				serverOut.println("NAME_ACCEPTED");
 				broadcast(name + " has joined the chat!");
 				activeUsers.put(socket, name);
+				serverOut.println("NAME_ACCEPTED");
 				
+				// wait for client to respond to confirm they are ready for input
+				while (!serverIn.hasNextLine()) {
+					try {
+						Thread.sleep(100);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+				}
+				serverIn.nextLine();
+				
+				// sets new coordinator and pushes list of active users to coordinator
 				if (coordinatorSocket == null) {
-					coordinatorSocket = socket;
+					setCoordinator(socket);
 				}
 				
 				// messages to the user upon joining the chat
@@ -272,7 +429,7 @@ public class ChatServer {
 			}
 			
 			// handle requests from the user
-			while (socket.isConnected()) {				
+			while (!socket.isClosed()) {				
 				if (serverIn.hasNextLine()) {
 					String message = serverIn.nextLine();
 					
@@ -290,14 +447,14 @@ public class ChatServer {
 							messageMode = MessageMode.BROADCAST;
 							printMessageMode();
 						}
-						else if (message.length() > 9 && message.substring(0, 8).equals("!private ")) {
+						else if (message.length() > 9 && message.substring(0, 9).equals("!private ")) {
 							// get substring from 9th char to remove the command part of message
 							String name = message.substring(9);
 							
 							// find name in map and set to privateRecipient
 							Socket targetSocket = null;
 							for (Map.Entry<Socket, String> entry : activeUsers.entrySet()) {
-								if (entry.getValue() == name) {
+								if (entry.getValue().equals(name)) {
 									targetSocket = entry.getKey();
 									break;
 								}
@@ -326,10 +483,14 @@ public class ChatServer {
 							}
 							
 							validateUsers();
+							break;
 						}
 						else {
 							serverOut.println("Invalid command!");
 						}
+					}
+					else if (message.equals("PING_START")) {
+						handlePings();
 					}
 					else {
 						switch (messageMode) {
