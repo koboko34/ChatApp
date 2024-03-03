@@ -116,6 +116,19 @@ public class ChatClient {
 	// This instance will also respond to any pings sent by the server.
 	private static class Printer implements Runnable {
 		
+		// stores active users
+		// used by coordinator
+		private void storeUserNames() {
+			userNames = new HashSet<>();
+			while (serverIn.hasNextLine()) {
+				String s = serverIn.nextLine();
+				if (s.equals("NAMES_END")) {
+					return;
+				}
+				userNames.add(s);
+			}
+		}
+		
 		@Override
 		public void run() {
 			serverOut.println("READY");
@@ -147,25 +160,11 @@ public class ChatClient {
 				}
 				
 				// put thread to sleep to save processing power
-				// messages are polled for 20 times per second
 				try {
-					Thread.sleep(50);
+					Thread.sleep(20);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
-			}
-		}
-		
-		// stores active users
-		// used by coordinator
-		private void storeUserNames() {
-			userNames = new HashSet<>();
-			while (serverIn.hasNextLine()) {
-				String s = serverIn.nextLine();
-				if (s.equals("NAMES_END")) {
-					return;
-				}
-				userNames.add(s);
 			}
 		}
 	}
@@ -196,6 +195,5 @@ public class ChatClient {
 				}
 			}
 		}
-		
 	}
 }

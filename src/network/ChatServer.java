@@ -146,6 +146,58 @@ public class ChatServer {
 			}
 		}
 		
+		private void handlePings() {
+			PrintWriter out = null;
+			Scanner in = null;
+			
+			while (serverIn.hasNextLine()) {
+				String userName = serverIn.nextLine();
+				if (userName.equals("PING_END")) {
+					validateUsers();
+					return;
+				}
+				
+				Socket user = null;
+				for (Map.Entry<Socket, String> entry : activeUsers.entrySet()) {
+					if (entry.getValue().equals(userName)) {
+						user = entry.getKey();
+						break;
+					}
+				}
+				
+				if (user == null) {
+					continue;
+				}
+				
+				try {
+					out = new PrintWriter(user.getOutputStream(), true);
+					in = new Scanner(user.getInputStream());
+					out.println("PING");
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+				
+				try {
+					Thread.sleep(50);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+				
+				if (in.hasNextLine()) {
+					String s = in.nextLine();
+					if (s.equals("PING")) {
+						continue;
+					}
+				}
+				
+				try {
+					user.close();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		
 		// validates that all users in activeUsers are still connected
 		// in the event that the coordinator is found to be disconnected,
 		// a new coordinator is selected at random
@@ -160,6 +212,7 @@ public class ChatServer {
 			}
 			
 			for (Socket user : usersToRemove) {
+				String name = activeUsers.get(user);
 				if (user.equals(coordinatorSocket)) {
 					coordinatorChanged = true;
 					activeUsers.remove(user);
@@ -168,6 +221,7 @@ public class ChatServer {
 				else {
 					activeUsers.remove(user);					
 				}
+				broadcast(name + "has left the chat!");
 			}
 			
 			pushUsersToCoordinator();
@@ -182,18 +236,25 @@ public class ChatServer {
 				return;
 			}
 			
-			serverOut.println("NAMES_BEGIN");
-			for (String name : activeUsers.values()) {
-				serverOut.println(name);
+			PrintWriter out = null;
+			try {
+				out = new PrintWriter(coordinatorSocket.getOutputStream(), true);
+			} catch (IOException e) {
+				e.printStackTrace();
 			}
-			serverOut.println("NAMES_END");
+			
+			out.println("NAMES_BEGIN");
+			for (String name : activeUsers.values()) {
+				out.println(name);
+			}
+			out.println("NAMES_END");
 		}
 		
 		// broadcast a message to all active users except self
 		private void broadcast(String message) {
 			PrintWriter out = null;
 			for (Socket user : activeUsers.keySet()) {
-				if (user == socket) {
+				if (user == socket || socket.isClosed()) {
 					continue;
 				}
 				try {
@@ -299,58 +360,6 @@ public class ChatServer {
 				e.printStackTrace();
 			}
 			out.println("NEW_COORDINATOR");
-		}
-		
-		private void handlePings() {
-			PrintWriter out = null;
-			Scanner in = null;
-			
-			while (serverIn.hasNextLine()) {
-				String userName = serverIn.nextLine();
-				if (userName.equals("PING_END")) {
-					validateUsers();
-					return;
-				}
-				
-				Socket user = null;
-				for (Map.Entry<Socket, String> entry : activeUsers.entrySet()) {
-					if (entry.getValue().equals(userName)) {
-						user = entry.getKey();
-						break;
-					}
-				}
-				
-				if (user == null) {
-					continue;
-				}
-				
-				try {
-					out = new PrintWriter(user.getOutputStream(), true);
-					in = new Scanner(user.getInputStream());
-					out.println("PING");
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-				
-				try {
-					Thread.sleep(10);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-				
-				if (in.hasNextLine()) {
-					String s = in.nextLine();
-					if (s.equals("PING")) {
-						continue;
-					}
-				}
-				
-				try {
-					user.close();
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-			}
 		}
 		
 		/*
