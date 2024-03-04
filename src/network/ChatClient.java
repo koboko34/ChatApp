@@ -3,24 +3,21 @@ package network;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Scanner;
 
 public class ChatClient {
 
-	private static Socket socket;
+	static Socket socket;
 	
-	private static Scanner in;
-	private static Scanner serverIn;
-	private static PrintWriter serverOut;
+	static Scanner in;
+	static Scanner serverIn;
+	static PrintWriter serverOut;
 		
-	private static String name;
+	static String name;
 	
-	private static HashSet<String> userNames;
-	
-	private static ArrayList<String> pingResponders;
-	
+	static HashSet<String> userNames;
+		
 	public static void main(String[] args) throws IOException {
 		in = new Scanner(System.in);
 		
@@ -108,92 +105,6 @@ public class ChatClient {
 		}
 		if (serverIn != null) {
 			serverIn.close();
-		}
-	}
-	
-	// This class is responsible for handling incoming messages from the server.
-	// Instances of this class will run on its own thread.
-	// This instance will also respond to any pings sent by the server.
-	private static class Printer implements Runnable {
-		
-		// stores active users
-		// used by coordinator
-		private void storeUserNames() {
-			userNames = new HashSet<>();
-			while (serverIn.hasNextLine()) {
-				String s = serverIn.nextLine();
-				if (s.equals("NAMES_END")) {
-					return;
-				}
-				userNames.add(s);
-			}
-		}
-		
-		@Override
-		public void run() {
-			serverOut.println("READY");
-			
-			while (!socket.isClosed()) {
-				while (serverIn.hasNextLine()) {
-					String message = serverIn.nextLine();
-					if (message.equals("QUIT_SUCCESS")) {
-						try {
-							socket.close();
-						} catch (IOException e) {
-							e.printStackTrace();
-						}
-						return;
-					}
-					else if (message.equals("NAMES_BEGIN")) {
-						storeUserNames();
-					}
-					else if (message.equals("PING")) {
-						serverOut.println("PING");
-					}
-					else if (message.equals("NEW_COORDINATOR")) {
-						Thread pingerThread = new Thread(new Pinger(), "pingerThread");
-						pingerThread.start();
-					}
-					else {
-						System.out.println(message);						
-					}
-				}
-				
-				// put thread to sleep to save processing power
-				try {
-					Thread.sleep(20);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-			}
-		}
-	}
-	
-	// this class is instantiated only on the coordinator
-	// responsible for maintaining state of active members by sending pings to all clients
-	// clients who fail to respond are considered as disconnected and are removed from active users list
-	private static class Pinger implements Runnable {
-
-		@Override
-		public void run() {			
-			while (!socket.isClosed()) {
-				// clear list
-				pingResponders = new ArrayList<>();
-				
-				// send pings to all clients to check if still connected
-				serverOut.println("PING_START");
-				for (String userName : userNames) {
-					serverOut.println(userName);
-				}
-				serverOut.println("PING_END");
-				
-				// repeat after 60 seconds
-				try {
-					Thread.sleep(60000);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-			}
 		}
 	}
 }

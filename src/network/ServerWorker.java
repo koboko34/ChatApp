@@ -16,7 +16,7 @@ import java.util.concurrent.ThreadLocalRandom;
 
 // Worker class responsible for handling events between the server and one user.
 // Each worker instance is on its own thread and handles only one user for the thread's lifetime.
-public class ServerWorker implements Runnable {
+class ServerWorker implements Runnable {
 	public Socket socket;
 	public Scanner serverIn;
 	public PrintWriter serverOut;

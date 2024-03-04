@@ -1,7 +1,5 @@
 package network;
 
-import java.io.IOException;
-import java.net.Socket;
 import java.util.concurrent.ThreadFactory;
 
 // thread factory which allows for custom naming of threads for readability

@@ -8,7 +8,7 @@ import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class ServerContext {
+class ServerContext {
 	public static HashMap<Socket, String> activeUsers = new HashMap<>();
 	public static Socket coordinatorSocket = null;
 	

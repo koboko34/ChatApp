@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.net.Socket;
 import java.util.Map;
 
-public class RequestHandler {
+class RequestHandler {
 	ServerWorker serverWorker;
 	
 	public RequestHandler(ServerWorker serverWorker) {
