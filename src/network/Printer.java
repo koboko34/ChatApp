@@ -8,6 +8,7 @@ import java.util.HashSet;
 // This instance will also respond to any pings sent by the server.
 class Printer implements Runnable {
 	
+	Thread pingerThread;
 	// stores active users
 	// used by coordinator
 	private void storeUserNames() {
@@ -34,7 +35,7 @@ class Printer implements Runnable {
 					} catch (IOException e) {
 						e.printStackTrace();
 					}
-					return;
+					break;
 				}
 				else if (message.equals("NAMES_BEGIN")) {
 					storeUserNames();
@@ -43,7 +44,7 @@ class Printer implements Runnable {
 					ChatClient.serverOut.println("PING");
 				}
 				else if (message.equals("NEW_COORDINATOR")) {
-					Thread pingerThread = new Thread(new Pinger(), "pingerThread");
+					pingerThread = new Thread(new Pinger(), "pingerThread");
 					pingerThread.start();
 				}
 				else {
@@ -58,5 +59,7 @@ class Printer implements Runnable {
 				e.printStackTrace();
 			}
 		}
+		
+		pingerThread.interrupt();
 	}
 }

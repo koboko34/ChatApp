@@ -110,6 +110,20 @@ class ServerWorker implements Runnable {
 		PrintWriter out = null;
 		pingResponders.clear();
 		
+		while (!hasNextLine()) {
+			try {
+				Thread.sleep(5);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			
+			if (messageQueue.contains("PING_END")) {
+				break;
+			}
+			
+			
+		}
+		
 		while (hasNextLine()) {
 			String userName = nextLine();
 			if (userName.equals("PING_END")) {
@@ -336,7 +350,10 @@ class ServerWorker implements Runnable {
 		// validate that all users in activeUsers are still connected
 		validateUsers();
 		
-		Thread streamReader = new Thread(new StreamReader(this), "streamReader");
+		// creates a thread for StreamReader and gives a unique name with id matching the
+		// id of current server worker thread
+		Thread streamReader = new Thread(new StreamReader(this), "streamReader-" +
+				Thread.currentThread().getName().charAt(Thread.currentThread().getName().length() - 1));
 		streamReader.start();
 		
 		// check if socket is already in activeUsers
@@ -419,5 +436,13 @@ class ServerWorker implements Runnable {
 		}
 		
 		validateUsers();
+		
+		try {
+			streamReader.join();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		
+		return;
 	}
 }
