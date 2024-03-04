@@ -8,7 +8,9 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -74,7 +76,7 @@ public class ChatServer {
 	// custom thread factory which allows each thread pool to give accurate names to their threads
 	private static class NamedThreadFactory implements ThreadFactory {
 		private String threadName;
-		private int i = 0;
+		private static int i = 0;
 		
 		public NamedThreadFactory(String name) {
 			threadName = name;
@@ -112,7 +114,12 @@ public class ChatServer {
 		private PrintWriter serverOut;
 		
 		private MessageMode messageMode = MessageMode.BROADCAST;
-		private Socket privateRecipient = null;
+		private Socket privateRecipient;
+		
+		// used as the main interface for reading messages
+		// unlike a normal Scanner, messages on this queue can be read without being removed from the queue
+		private Queue<String> messageQueue;
+		private boolean receivedPing = false;
 		
 		// prepares streams for communication between server and the user this worker is responsible for
 		public Worker(Socket socket) {
@@ -120,6 +127,75 @@ public class ChatServer {
 			try {
 				this.serverIn = new Scanner(this.socket.getInputStream());
 				this.serverOut = new PrintWriter(this.socket.getOutputStream(), true);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			messageQueue = new LinkedList<>();
+		}
+		
+		
+		
+		
+		// this class runs on its own thread and constantly reads the input stream
+		// any messages are passed through to messageQueue
+		private class StreamReader implements Runnable {
+
+			public StreamReader() {
+
+			}
+			
+			// reads messages from input stream and pushes it to messageQueue
+			private void readStream() {
+				while (!socket.isClosed() && serverIn.hasNextLine()) {
+					String s = serverIn.nextLine();
+					if (s.equals("PING")) {
+						receivedPing = true;
+					}
+					else {						
+						messageQueue.add(s); 
+					}
+				}
+			}
+			
+			@Override
+			public void run() {
+				readStream();
+			}
+			
+		}
+		
+		// returns whether messageQueue has a message to be read
+		private boolean hasNextLine() {
+			return messageQueue.size() > 0;
+		}
+		
+		// returns next line without removing it from the queue
+		private String peekNextLine() {
+			return messageQueue.peek();
+		}
+		
+		// returns next line and removes it from the queue
+		private String nextLine() {
+			return messageQueue.poll();
+		}
+		
+		// closes a socket and removes user from activeUsers
+		private void closeSocket(Socket socket) {
+			String name = activeUsers.remove(socket);
+
+			if (name != null) {
+				broadcast(name + "has left the chat!");				
+			}
+			
+			if (socket.equals(coordinatorSocket)) {
+				assignRandomCoordinator();
+				if (coordinatorSocket != null) {
+					broadcast("Coordinator changed. The new coordinator is " + activeUsers.get(coordinatorSocket));					
+				}
+			}
+			
+			try {
+				socket.close();
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -146,12 +222,12 @@ public class ChatServer {
 			}
 		}
 		
+		// checks who is still connected by sending a ping and listening for a returning ping
 		private void handlePings() {
 			PrintWriter out = null;
-			Scanner in = null;
 			
-			while (serverIn.hasNextLine()) {
-				String userName = serverIn.nextLine();
+			while (hasNextLine()) {
+				String userName = nextLine();
 				if (userName.equals("PING_END")) {
 					validateUsers();
 					return;
@@ -169,12 +245,14 @@ public class ChatServer {
 					continue;
 				}
 				
+				receivedPing = false;
+				
 				try {
 					out = new PrintWriter(user.getOutputStream(), true);
-					in = new Scanner(user.getInputStream());
 					out.println("PING");
 				} catch (IOException e) {
 					e.printStackTrace();
+					closeSocket(user);
 				}
 				
 				try {
@@ -183,11 +261,8 @@ public class ChatServer {
 					e.printStackTrace();
 				}
 				
-				if (in.hasNextLine()) {
-					String s = in.nextLine();
-					if (s.equals("PING")) {
-						continue;
-					}
+				if (receivedPing) {
+					continue;
 				}
 				
 				try {
@@ -241,6 +316,7 @@ public class ChatServer {
 				out = new PrintWriter(coordinatorSocket.getOutputStream(), true);
 			} catch (IOException e) {
 				e.printStackTrace();
+				closeSocket(coordinatorSocket);
 			}
 			
 			out.println("NAMES_BEGIN");
@@ -262,6 +338,7 @@ public class ChatServer {
 					out.println(message);
 				} catch (IOException e) {
 					e.printStackTrace();
+					closeSocket(user);
 				}
 			}
 		}
@@ -280,6 +357,7 @@ public class ChatServer {
 			}
 		}
 		
+		// prints a message to the user and displays all the commands available for them to use in the chat
 		private void printCommands() {
 			serverOut.println("\n");
 			serverOut.println("======= CUSTOM COMMANDS =======");
@@ -294,7 +372,9 @@ public class ChatServer {
 		
 		// prints a formatted string containing the name of the current session coordinator
 		private void printCoordinatorMessage() {
-			serverOut.println("The current coordinator is: " + activeUsers.get(coordinatorSocket));
+			serverOut.println("The current coordinator is: " + activeUsers.get(coordinatorSocket) +
+					". IP: " + coordinatorSocket.getInetAddress().getHostAddress() +
+					"  PORT: " + coordinatorSocket.getLocalPort());
 		}
 		
 		// prints a formatted string containing the number of active users
@@ -329,6 +409,10 @@ public class ChatServer {
 				String port = String.valueOf(entry.getKey().getLocalPort());
 				String name = entry.getValue();
 				
+				if (entry.getKey().equals(coordinatorSocket)) {
+					name += " (coordinator)";
+				}
+				
 				s = "  " + ip;
 				for (int i = ip.length(); i < 15; i++) {
 					s += " ";
@@ -353,45 +437,30 @@ public class ChatServer {
 		private void setCoordinator(Socket newCoordinator) {
 			coordinatorSocket = newCoordinator;
 			pushUsersToCoordinator();
-			PrintWriter out = null;
+
 			try {
-				out = new PrintWriter(newCoordinator.getOutputStream(), true);
+				PrintWriter out = new PrintWriter(newCoordinator.getOutputStream(), true);
+				out.println("NEW_COORDINATOR");
 			} catch (IOException e) {
 				e.printStackTrace();
+				closeSocket(newCoordinator);
 			}
-			out.println("NEW_COORDINATOR");
 		}
-		
-		/*
-		// ping the client to see if there is a response
-		// if there is no response, we assume the client has quit and close the socket
-		private boolean ping() {
-			serverOut.println("PING");
-			try {
-				Thread.sleep(10);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
-			if (!socket.isClosed() && serverIn.hasNextLine()) {
-				String s = serverIn.nextLine();
-				if (s.equals("PING")) {
-					return true;
-				}
-			}
-			return false;
-		}
-		*/
 		
 		@Override
 		public void run() {			
-			// validate that all users are still connected
+			// validate that all users in activeUsers are still connected
 			validateUsers();
+			
+			Thread streamReader = new Thread(new StreamReader(), "streamReader");
+			streamReader.start();
 			
 			// check if socket is already in activeUsers
 			// if not, try add with name from stream
 			// if name taken, respond with NAME_TAKEN
 			while (!activeUsers.containsKey(socket)) {
-				while (!serverIn.hasNextLine()) {
+				// starts reading input stream and pushing those messages to messageQueue				
+				while (!hasNextLine()) {
 					try {
 						Thread.sleep(100);
 					} catch (InterruptedException e) {
@@ -401,7 +470,7 @@ public class ChatServer {
 				
 				// check if the name input by the user is unique
 				// returns NAME_TAKEN if name is already used
-				String name = serverIn.nextLine();
+				String name = nextLine();
 				if (activeUsers.containsValue(name))
 				{
 					serverOut.println("NAME_TAKEN");
@@ -412,110 +481,133 @@ public class ChatServer {
 				broadcast(name + " has joined the chat!");
 				activeUsers.put(socket, name);
 				serverOut.println("NAME_ACCEPTED");
-				
-				// wait for client to respond to confirm they are ready for input
-				while (!serverIn.hasNextLine()) {
-					try {
-						Thread.sleep(100);
-					} catch (InterruptedException e) {
-						e.printStackTrace();
-					}
-				}
-				serverIn.nextLine();
-				
-				// sets new coordinator and pushes list of active users to coordinator
-				if (coordinatorSocket == null) {
-					setCoordinator(socket);
-				}
-				
-				// messages to the user upon joining the chat
-				// also informs users of custom commands
-				printCommands();
-				printMessageMode();				
-				serverOut.println("\nWelcome to the chat!");
-				printUserCountMessage();
-				printCoordinatorMessage();
 			}
+			
+			// wait for client to respond to confirm they are ready for input
+			while (!hasNextLine()) {
+				try {
+					Thread.sleep(100);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+			
+			// listen for READY message
+			try {
+				if (!nextLine().equals("READY")) {
+					throw new Exception(Thread.currentThread().getName() + " failed to find READY message from client!");
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+				try {
+					socket.close();
+				} catch (IOException e1) {
+					e1.printStackTrace();
+				}
+				return;
+			}
+			
+			// sets new coordinator and pushes list of active users to coordinator
+			if (coordinatorSocket == null) {
+				setCoordinator(socket);
+			}
+			
+			// messages to the user upon joining the chat
+			// also informs users of custom commands
+			printCommands();
+			printMessageMode();				
+			serverOut.println("\nWelcome to the chat!");
+			printUserCountMessage();
+			printCoordinatorMessage();
 			
 			// handle requests from the user
 			while (!socket.isClosed()) {				
-				if (serverIn.hasNextLine()) {
-					String message = serverIn.nextLine();
+				if (hasNextLine()) {
+					handleRequest();
+				}
+			}
+		}
+		
+		// checks if there is a request in messageQueue and if so, handles the request
+		private void handleRequest() {
+			if (messageQueue.isEmpty()) {
+				return;
+			}
+			
+			String message = nextLine();
+			
+			if (message.charAt(0) == '!') {
+				if (message.equals("!coordinator")) {
+					printCoordinatorMessage();
+				}
+				else if (message.equals("!online")) {
+					printUserDetailsMessage();
+				}
+				else if (message.equals("!commands") || message.equals("!help")) {
+					printCommands();
+				}
+				else if (message.equals("!broadcast")) {
+					messageMode = MessageMode.BROADCAST;
+					printMessageMode();
+				}
+				else if (message.length() > 9 && message.substring(0, 9).equals("!private ")) {
+					// get substring from 9th char to remove the command part of message
+					String name = message.substring(9);
 					
-					if (message.charAt(0) == '!') {
-						if (message.equals("!coordinator")) {
-							printCoordinatorMessage();
-						}
-						else if (message.equals("!online")) {
-							printUserDetailsMessage();
-						}
-						else if (message.equals("!commands") || message.equals("!help")) {
-							printCommands();
-						}
-						else if (message.equals("!broadcast")) {
-							messageMode = MessageMode.BROADCAST;
-							printMessageMode();
-						}
-						else if (message.length() > 9 && message.substring(0, 9).equals("!private ")) {
-							// get substring from 9th char to remove the command part of message
-							String name = message.substring(9);
-							
-							// find name in map and set to privateRecipient
-							Socket targetSocket = null;
-							for (Map.Entry<Socket, String> entry : activeUsers.entrySet()) {
-								if (entry.getValue().equals(name)) {
-									targetSocket = entry.getKey();
-									break;
-								}
-							}
-							
-							// if name not in map, do not change messageMode
-							if (targetSocket == null) {
-								serverOut.println("Username not found in active users!");
-								continue;
-							}
-							
-							privateRecipient = targetSocket;
-							messageMode = MessageMode.PRIVATE;
-							printMessageMode();
-						}
-						else if (message.equals("!quit")) {
-							serverOut.println("QUIT_SUCCESS");
-							
-							// close socket, input and output streams
-							try {
-								socket.close();
-								serverIn.close();
-								serverOut.close();
-							} catch (IOException e) {
-								e.printStackTrace();
-							}
-							
-							validateUsers();
-							break;
-						}
-						else {
-							serverOut.println("Invalid command!");
-						}
-					}
-					else if (message.equals("PING_START")) {
-						handlePings();
-					}
-					else {
-						switch (messageMode) {
-						case BROADCAST:
-							message = getCurrentTimestamp() + activeUsers.get(socket) + ": " + message;
-							broadcast(message);
-							break;
-						case PRIVATE:
-							message = getCurrentTimestamp() + activeUsers.get(socket) + " (PRIVATE): " + message;
-							privateMessage(message);
-							break;
-						default:
+					// find name in map and set to privateRecipient
+					Socket targetSocket = null;
+					for (Map.Entry<Socket, String> entry : activeUsers.entrySet()) {
+						if (entry.getValue().equals(name)) {
+							targetSocket = entry.getKey();
 							break;
 						}
 					}
-				}			
+					
+					// if name not in map, do not change messageMode
+					if (targetSocket == null) {
+						serverOut.println("Username not found in active users!");
+						return;
+					}
+					
+					privateRecipient = targetSocket;
+					messageMode = MessageMode.PRIVATE;
+					printMessageMode();
+				}
+				else if (message.equals("!quit")) {
+					serverOut.println("QUIT_SUCCESS");
+					
+					// close socket, input and output streams
+					try {
+						socket.close();
+						serverIn.close();
+						serverOut.close();
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+					
+					validateUsers();
+					return;
+				}
+				else {
+					serverOut.println("Invalid command!");
+				}
+			}
+			else if (message.equals("PING_START")) {
+				handlePings();
+			}
+			else {
+				switch (messageMode) {
+				case BROADCAST:
+					message = getCurrentTimestamp() + activeUsers.get(socket) + ": " + message;
+					broadcast(message);
+					break;
+				case PRIVATE:
+					message = getCurrentTimestamp() + activeUsers.get(socket) + " (PRIVATE): " + message;
+					privateMessage(message);
+					break;
+				default:
+					break;
+				}
 			}
 		}
 	}
