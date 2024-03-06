@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.Socket;
 import java.util.Map;
 
+// This class is responsible for handling any requests sent in from the client.
 class RequestHandler {
 	ServerWorker serverWorker;
 	
@@ -30,6 +31,7 @@ class RequestHandler {
 		}
 	}
 	
+	// handles command requests from the client
 	public void handleCommand(String message) {
 		if (message.equals("!coordinator")) {
 			serverWorker.printCoordinatorMessage();
@@ -47,6 +49,10 @@ class RequestHandler {
 		else if (message.length() > 9 && message.substring(0, 9).equals("!private ")) {
 			// get substring from 9th char to remove the command part of message
 			String name = message.substring(9);
+			if (name.equals(serverWorker.userName)) {
+				serverWorker.serverOut.println("Cannot send private message to yourself!");
+				return;
+			}
 			
 			// find name in map and set to privateRecipient
 			Socket targetSocket = null;
@@ -87,6 +93,8 @@ class RequestHandler {
 		}
 	}
 	
+	// handles standard messages from the client and sends it as broadcast or private message
+	// depending on the active messageMode enum
 	public void handleMessage(String message) {
 		switch (serverWorker.messageMode) {
 		case BROADCAST:

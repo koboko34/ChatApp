@@ -201,6 +201,7 @@ class ServerWorker implements Runnable {
 		}
 	}
 	
+	// updates the list of active users stored on the coordinator
 	private void pushUsersToCoordinator() {
 		if (ServerContext.coordinatorSocket == null) {
 			return;
@@ -241,6 +242,9 @@ class ServerWorker implements Runnable {
 	// sends a private message to current privateRecipient
 	// throws exception if privateRecipient is null
 	public void privateMessage(String message) {
+		if (privateRecipient.equals(socket)) {
+			return;
+		}
 		try {
 			if (privateRecipient == null) {
 				throw new Exception("privateRecipient is null!");
@@ -332,6 +336,8 @@ class ServerWorker implements Runnable {
 		return "[" + currentTime.format(formatter) + "] ";
 	}
 	
+	// sets new coordinator and informs the client that they are the new coordinator,
+	// which in result causes the new coordinator to start pinging all connected users
 	private void setCoordinator(Socket newCoordinator) {
 		ServerContext.coordinatorSocket = newCoordinator;
 		pushUsersToCoordinator();
@@ -442,7 +448,5 @@ class ServerWorker implements Runnable {
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
-		
-		
 	}
 }

@@ -1,6 +1,6 @@
 package network;
 
-//this class runs on its own thread and constantly reads the input stream
+// this class runs on its own thread and constantly reads the input stream
 // any messages are passed through to messageQueue
 class StreamReader implements Runnable {
 	ServerWorker serverWorker;
