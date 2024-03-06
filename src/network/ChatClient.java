@@ -87,6 +87,9 @@ public class ChatClient {
 		// allow user to write messages and run commands
 		while (!socket.isClosed()) {
 			String s = in.nextLine();
+			if (s.isEmpty()) {
+				continue;
+			}
 			serverOut.println(s);
 			if (s.equals("!quit")) {
 				break;

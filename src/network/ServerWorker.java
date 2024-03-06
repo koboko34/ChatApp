@@ -190,13 +190,13 @@ class ServerWorker implements Runnable {
 			else {
 				ServerContext.activeUsers.remove(user);					
 			}
-			broadcast(name + "has left the chat!");
+			broadcast(name + " has left the chat!");
 		}
 		
 		pushUsersToCoordinator();
 		if (coordinatorChanged && ServerContext.coordinatorSocket != null)
 		{
-			broadcast("Coordinator changed. The new coordinator is " + 
+			broadcast("Coordinator changed. The new coordinator is: " + 
 					ServerContext.activeUsers.get(ServerContext.coordinatorSocket));
 		}
 	}
@@ -225,7 +225,7 @@ class ServerWorker implements Runnable {
 	public void broadcast(String message) {
 		PrintWriter out = null;
 		for (Socket user : ServerContext.activeUsers.keySet()) {
-			if (socket.isClosed()) {
+			if (user.isClosed()) {
 				continue;
 			}
 			try {
@@ -443,6 +443,6 @@ class ServerWorker implements Runnable {
 			e.printStackTrace();
 		}
 		
-		return;
+		
 	}
 }

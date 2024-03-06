@@ -8,6 +8,11 @@ import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+// Singleton design pattern. Only one ServerContext is allowed to run at a time.
+// This class is responsible for setting up the server and accepting any incoming
+// connection requests. While setting up the server, user is asked for a port number
+// and their input is validated to ensure it is a valid port. The server closes all
+// sockets before exiting the program.
 class ServerContext {
 	public static HashMap<Socket, String> activeUsers = new HashMap<>();
 	public static Socket coordinatorSocket = null;

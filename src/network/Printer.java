@@ -9,8 +9,8 @@ import java.util.HashSet;
 class Printer implements Runnable {
 	
 	Thread pingerThread;
-	// stores active users
-	// used by coordinator
+	
+	// stores active users, used by coordinator
 	private void storeUserNames() {
 		ChatClient.userNames = new HashSet<>();
 		while (ChatClient.serverIn.hasNextLine()) {
@@ -60,6 +60,8 @@ class Printer implements Runnable {
 			}
 		}
 		
-		pingerThread.interrupt();
+		if (pingerThread.isAlive()) {
+			pingerThread.interrupt();			
+		}
 	}
 }
