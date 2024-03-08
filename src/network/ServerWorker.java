@@ -120,8 +120,6 @@ class ServerWorker implements Runnable {
 			if (messageQueue.contains("PING_END")) {
 				break;
 			}
-			
-			
 		}
 		
 		while (hasNextLine()) {

@@ -6,12 +6,12 @@ import java.util.HashSet;
 // This class is responsible for handling incoming messages from the server.
 // Instances of this class will run on its own thread.
 // This instance will also respond to any pings sent by the server.
-class Printer implements Runnable {
+public class Printer implements Runnable {
 	
 	Thread pingerThread;
 	
 	// stores active users, used by coordinator
-	private void storeUserNames() {
+	public void storeUserNames() {
 		ChatClient.userNames = new HashSet<>();
 		while (ChatClient.serverIn.hasNextLine()) {
 			String s = ChatClient.serverIn.nextLine();

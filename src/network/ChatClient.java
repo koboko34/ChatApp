@@ -11,12 +11,12 @@ public class ChatClient {
 	static Socket socket;
 	
 	static Scanner in;
-	static Scanner serverIn;
+	public static Scanner serverIn;
 	static PrintWriter serverOut;
 		
 	static String name;
 	
-	static HashSet<String> userNames;
+	public static HashSet<String> userNames;
 		
 	public static void main(String[] args) throws IOException {
 		in = new Scanner(System.in);
