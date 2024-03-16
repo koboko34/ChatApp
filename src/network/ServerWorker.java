@@ -191,7 +191,6 @@ class ServerWorker implements Runnable {
 			broadcast(name + " has left the chat!");
 		}
 		
-		pushUsersToCoordinator();
 		if (coordinatorChanged && ServerContext.coordinatorSocket != null)
 		{
 			broadcast("Coordinator changed. The new coordinator is: " + 

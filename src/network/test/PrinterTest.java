@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.Scanner;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import network.ChatClient;
@@ -33,6 +34,11 @@ class PrinterTest {
 		
 		inputStream = new ByteArrayInputStream(s.getBytes());
 	}
+	
+	@BeforeEach
+	void setUpBeforeTest() throws Exception {
+		ChatClient.serverIn = new Scanner(inputStream);
+	}
 
 	@AfterEach
 	void tearDown() throws Exception {
@@ -42,9 +48,7 @@ class PrinterTest {
 	// Normal test, sending 3 names and expecting the same 3 names to be stored.
 	// Expected result: correct
 	@Test
-	void testStoreUserNames1() {
-		ChatClient.serverIn = new Scanner(inputStream);
-		
+	void testStoreUserNames1() {		
 		Printer printer = new Printer();
 		printer.storeUserNames();
 		
@@ -61,9 +65,7 @@ class PrinterTest {
 	// This test simulates none of the names being stored
 	// Expected result: incorrect
 	@Test
-	void testStoreUserNames2() {
-		ChatClient.serverIn = new Scanner(inputStream);
-		
+	void testStoreUserNames2() {		
 		Printer printer = new Printer();
 		printer.storeUserNames();
 		ChatClient.userNames.clear();
@@ -81,9 +83,7 @@ class PrinterTest {
 	// This test simulates one of the names being stored multiple times
 	// Expected result: incorrect
 	@Test
-	void testStoreUserNames3() {
-		ChatClient.serverIn = new Scanner(inputStream);
-		
+	void testStoreUserNames3() {		
 		Printer printer = new Printer();
 		printer.storeUserNames();
 		
