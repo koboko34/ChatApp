@@ -60,8 +60,8 @@ public class Printer implements Runnable {
 			}
 		}
 		
-		if (pingerThread.isAlive()) {
-			pingerThread.interrupt();			
+		if (pingerThread != null && pingerThread.isAlive()) {
+			pingerThread.interrupt();
 		}
 	}
 }
